@@ -1,0 +1,160 @@
+//Les librairies 
+#include <ESP8266WiFi.h>
+#include "DHT.h" //pour le capteur de température et d'humidité
+#include <Servo.h> //pour le Servo moteur
+
+//Initialisation, déclarations des données
+#define DHTPIN 16 //broche sur laquelle le capteur est branché
+#define DHTTYPE DHT22 
+DHT dht(DHTPIN, DHTTYPE); //déclaration du capteur
+
+#define pinServo 2
+Servo monServomoteur;
+const int LED = 4; //initialisation de la led
+const int PR = A0; //initialisation de la photorésistance
+int value = 0; //stockage de la photorésistance
+int autotest;
+
+//Connexion WiFi
+const char* ssid = "ID"; //remplacer ID par votre identifiant de connexion
+const char* password = "MDP"; //remplacer MDP par votre mot de passe de connexion
+WifiServer server(80);
+
+void setup() {
+  // put your setup code here, to run once:
+
+  Serial.begin(115200);
+
+  //initialisation capteur 
+  dht.begin();
+
+  //Initialisation du Servo-moteur
+  monServomoteur.attach(pinServo);
+  monServomoteur.write(0);
+
+  //Initialisation de la photorésistance
+  pinMode(PR, INPUT);
+  
+  //Initialisation de la led
+  pinMode(LED, OUTPUT);
+
+  
+  //Connexion au réseau WiFi
+  Serial.println();
+  WiFi.mode(WIFI_STA);
+  Serial.println();
+  
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println(WiFi.localIP());
+  
+}
+
+void loop() {
+ // put your main code here, to run repeatedly:
+
+  //Ventilateur
+  float h = dht.readHumidity();// lecture de l'hygrométrie
+  float t = dht.readTemperature();// lecture de la temperature en Celsius
+
+  //Vérification que les données h et t sont des nombres
+  if (isnan(h) || isnan(t)) {
+    println("Erreur dans la lecture des données.");
+    return;
+  } 
+  else {
+    //Affichage des informations récupérées
+    Serial.println("Humidity: ");
+    Serial.println(h);
+    Serial.println("Temperature: ");
+    Serial.println(t);
+    Serial.println(" *C ");
+  }
+  
+  if (t>27 || h>60) { //Si la température est supérieur à 27°C, le Servo-moteur tourne en continue
+    for (pos = 0; pos <=180; pos +=1) {
+      monServomoteur.write(pos); //parcourt tous les angles de 0 à 180°
+    }
+  }
+  else { //Si la température est inférieur à 27°C, le Servo-moteur ne tourne pas
+    monServomoteur.write(0);
+  }
+
+  //lumière
+  int value = analogRead(PR);
+  Serial.print("Valeur : ");
+  Serial.println(value);
+  if(autotest == 1){
+    if(value < 500){ //si la luminosité est inférieur à 500, la  led s'allume
+      digitalWrite(LED,INPUT);
+    }
+    if(value > 500){ //si la luminosité est supérieur à 500, la  led ne s'allume pas
+      digitalWrite(LED,OUTPUT);
+    }
+  }
+
+  //Partie connexion Wifi
+  WiFiClient client = server.available();   // listen for incoming clients
+
+  if (client) {                             // if you get a client,
+    Serial.println("New Client.");           // print a message out the serial port
+    String currentLine = "";                // make a String to hold incoming data from the client
+    while (client.connected()) {            // loop while the client's connected
+      if (client.available()) {             // if there's bytes to read from the client,
+        char c = client.read();             // read a byte, then
+        Serial.write(c);                    // print it out the serial monitor
+        if (c == '\n') {                    // if the byte is a newline character
+
+          // if the current line is blank, you got two newline characters in a row.
+          // that's the end of the client HTTP request, so send a response:
+          if (currentLine.length() == 0) {
+            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // and a content-type so the client knows what's coming, then a blank line:
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println();
+
+            // the content of the HTTP response follows the header:
+            client.print("Allumer : <a href=\"/H\">ON</a> !<br>");
+            client.print("Eteindre : <a href=\"/L\">OFF</a> !<br>");
+            client.print("Mode automatique : <a href=\"/AUTO\">AUTO</a> !<br>");
+
+            // The HTTP response ends with another blank line:
+            client.println();
+            // break out of the while loop:
+            break;
+          } else {    // if you got a newline, then clear currentLine:
+            currentLine = "";
+          }
+        } else if (c != '\r') {  // if you got anything else but a carriage return character,
+          currentLine += c;      // add it to the end of the currentLine
+        }
+
+        if (currentLine.endsWith("GET /AUTO")) { //mode automatique
+          delay(1000);
+          autotest = 1;
+          
+        }
+        if (currentLine.endsWith("GET /H")) { // GET /H allume la led
+          digitalWrite(LED, INPUT);
+          autotest = 0;
+        }
+        if (currentLine.endsWith("GET /L")) { // GET /L éteint la led
+          digitalWrite(LED, OUTPUT);
+          autotest = 0;
+        }
+      }
+    }
+
+    client.stop(); //arrêt de la connexion
+    Serial.println("Client Disconnected.");
+  }
+
+}
