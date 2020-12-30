@@ -122,6 +122,11 @@ void loop() {
             client.println();
 
             // the content of the HTTP response follows the header:
+            client.println("Humidity: ");
+            client.println(h);
+            client.println("Temperature: ");
+            client.println(t);
+            client.println(" *C ");
             client.print("Allumer : <a href=\"/H\">ON</a> !<br>");
             client.print("Eteindre : <a href=\"/L\">OFF</a> !<br>");
             client.print("Mode automatique : <a href=\"/AUTO\">AUTO</a> !<br>");
